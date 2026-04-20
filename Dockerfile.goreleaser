@@ -1,0 +1,7 @@
+# Used by GoReleaser to build release container images. The binary is built on
+# the host by GoReleaser and copied in; this image only carries CA roots.
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates && adduser -D -u 65532 kustomize
+USER kustomize
+COPY kustomize-mcp /usr/local/bin/kustomize-mcp
+ENTRYPOINT ["/usr/local/bin/kustomize-mcp"]

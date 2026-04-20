@@ -1,0 +1,31 @@
+# Build artifacts
+/kustomize-mcp
+/dist/
+
+# Test / coverage
+coverage.out
+c.out
+*.test
+*.out
+
+# Runtime data (checkpoints, diffs)
+/.kustomize-mcp/
+
+# Scratch / local experiments
+/temp/
+
+# Editor / IDE
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+*~
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Local config / secrets
+.env
+.env.*

@@ -1,0 +1,67 @@
+name: Bug report
+description: Report something that doesn't work as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill in as much
+        of the form below as you can.
+  - type: input
+    id: version
+    attributes:
+      label: kustomize-mcp version
+      description: Output of `kustomize-mcp -version` (Go accepts `-version` or `--version`)
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / arch
+      placeholder: "macOS 15.4 / arm64"
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client
+      placeholder: "Cursor 0.x / VS Code MCP"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug, including the MCP tool involved.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal kustomization layout, tool calls, or commands that trigger the issue.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant `kustomize-mcp` stderr output. Redact paths if needed.
+      render: text
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I have searched existing issues for duplicates.
+          required: true
+        - label: I have redacted any secrets from logs.
+          required: true
