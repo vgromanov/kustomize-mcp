@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/pmezard/go-difflib/difflib"
+
 	"github.com/vgromanov/kustomize-mcp/internal/manifest"
 )
 
@@ -74,7 +75,7 @@ func Dir(leftRoot, rightRoot, workDir, workspaceRoot string) (*Result, error) {
 				return nil, err
 			}
 			res.Modified = append(res.Modified, meta)
-			_, _ = diffBuf.WriteString(fmt.Sprintf("diff --git a/%s b/%s\n", rel, rel))
+			_, _ = fmt.Fprintf(&diffBuf, "diff --git a/%s b/%s\n", rel, rel)
 			ud := difflib.UnifiedDiff{
 				A:        difflib.SplitLines(string(lb)),
 				B:        difflib.SplitLines(string(rb)),

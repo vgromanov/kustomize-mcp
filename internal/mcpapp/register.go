@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	"github.com/vgromanov/kustomize-mcp/internal/diff"
 	"github.com/vgromanov/kustomize-mcp/internal/filter"
 	"github.com/vgromanov/kustomize-mcp/internal/kustmcp"

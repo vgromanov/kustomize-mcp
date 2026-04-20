@@ -226,25 +226,6 @@ func injectFluxFields(data []byte, spec *flux.FluxKustomizationSpec) ([]byte, er
 	return yaml.Marshal(doc)
 }
 
-func mapsToAnySlice(in []map[string]any) []any {
-	out := make([]any, 0, len(in))
-	for _, m := range in {
-		out = append(out, m)
-	}
-	return out
-}
-
-func appendAnySlice(existing any, add []any) []any {
-	var out []any
-	if existing != nil {
-		if sl, ok := existing.([]any); ok {
-			out = append(out, sl...)
-		}
-	}
-	out = append(out, add...)
-	return out
-}
-
 func appendUniqueStrings(existing any, add []string) []any {
 	out := stringSliceToAny(existing)
 	seen := make(map[string]bool)

@@ -297,7 +297,7 @@ func validateFluxSegment(s string) error {
 		return fmt.Errorf("segment must not contain path separators")
 	}
 	if strings.Contains(s, "..") {
-		return fmt.Errorf("segment must not contain ..")
+		return fmt.Errorf("segment must not contain parent directory references")
 	}
 	return nil
 }
