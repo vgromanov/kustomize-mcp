@@ -75,6 +75,8 @@ internal/
 | `inventory` | Lists rendered resources with origin + transformer metadata; supports filter |
 | `trace` | Traces one resource's provenance: origin file + ordered transformer chain |
 
+All tools accept an optional `project` argument (workspace-relative directory). When set, the effective workspace root becomes `<MCP workspace>/<project>`: paths and checkpoints are scoped under that subdirectory (`.kustomize-mcp/` lives in the project folder). Omit `project` for single-repo workspaces or paths expressed from the MCP workspace root.
+
 ### Prompts
 
 `explain`, `refactor`, `diff_dirs`, `troubleshoot` — each composes a `Usage`
@@ -136,6 +138,10 @@ fatal.
 1. `KUSTOMIZE_MCP_ROOT` env var (explicit override)
 2. MCP `roots/list` from the client session (Cursor / VS Code opened folder)
 3. `os.Getwd()` as last resort
+
+Tool handlers may join an optional `project` path onto this root before constructing
+`kustmcp.Server` (multi-project / monorepo workflows): checkpoints and dependency scans
+then use `<workspace>/<project>` as their root.
 
 The `RootSession` interface exists specifically to make this testable without a
 real MCP client.
@@ -266,7 +272,8 @@ surface warnings.
 - JSON field names use `snake_case` to match the upstream Python MCP server
 - Error messages are lowercase, no trailing punctuation
 - Path arguments throughout the stack are workspace-relative and use forward
-  slashes (converted via `filepath.ToSlash`)
+  slashes (converted via `filepath.ToSlash`). With the MCP `project` tool
+  argument, "workspace" means `<MCP workspace>/<project>` for that call.
 - Tool output schemas must be JSON objects per MCP SDK rules — wrap primitives
   in structs with `json` and `jsonschema` tags
 - Tests use standard `testing` package, no third-party test framework

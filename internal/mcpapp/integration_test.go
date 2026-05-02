@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -452,6 +453,172 @@ resources:
 	}
 	if traceRes.IsError {
 		t.Fatalf("trace: %+v", traceRes.Content)
+	}
+}
+
+func TestIntegration_multiProjectWorkspace(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"project-a", "project-b"} {
+		app := filepath.Join(root, name, "app")
+		if err := os.MkdirAll(app, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		cmName := "cfg-a"
+		if name == "project-b" {
+			cmName = "cfg-b"
+		}
+		if err := os.WriteFile(filepath.Join(app, "kustomization.yaml"), []byte(`apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- cm.yaml
+`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(app, "cm.yaml"), []byte(`apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: `+cmName+`
+data:
+  k: v
+`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Setenv("KUSTOMIZE_MCP_ROOT", root)
+	t.Setenv("KUSTOMIZE_LOAD_RESTRICTIONS", "true")
+	t.Setenv("KUSTOMIZE_ENABLE_HELM", "false")
+
+	ctx := context.Background()
+	ct, st := mcp.NewInMemoryTransports()
+	srv := mcp.NewServer(&mcp.Implementation{Name: version.Name, Version: version.Version}, &mcp.ServerOptions{
+		Instructions: Instructions,
+	})
+	Register(srv, Options{LoadRestrictions: true, Helm: false})
+	ss, err := srv.Connect(ctx, st, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ss.Close() })
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	cs, err := client.Connect(ctx, ct, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cs.Close() })
+
+	pa := "project-a"
+	pb := "project-b"
+	ckA := mustToolString(t, cs, ctx, "create_checkpoint", map[string]any{"project": pa}, "checkpoint_id")
+	ckB := mustToolString(t, cs, ctx, "create_checkpoint", map[string]any{"project": pb}, "checkpoint_id")
+
+	mustToolOK(t, cs, ctx, "render", map[string]any{
+		"checkpoint_id": ckA,
+		"path":          "app",
+		"project":       pa,
+	})
+	mustToolOK(t, cs, ctx, "render", map[string]any{
+		"checkpoint_id": ckB,
+		"path":          "app",
+		"project":       pb,
+	})
+
+	invA, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name: "inventory",
+		Arguments: map[string]any{
+			"checkpoint_id": ckA,
+			"path":          "app",
+			"project":       pa,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invA.IsError {
+		t.Fatalf("inventory a: %+v", invA.Content)
+	}
+	var outA struct {
+		Total     int `json:"total"`
+		Resources []struct {
+			Metadata struct {
+				Kind string `json:"kind"`
+				Name string `json:"name"`
+			} `json:"metadata"`
+		} `json:"resources"`
+	}
+	if err := structuredToMap(invA.StructuredContent, &outA); err != nil {
+		t.Fatal(err)
+	}
+	if outA.Total != 1 || outA.Resources[0].Metadata.Name != "cfg-a" {
+		t.Fatalf("inventory project-a: %+v", outA)
+	}
+
+	invB, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name: "inventory",
+		Arguments: map[string]any{
+			"checkpoint_id": ckB,
+			"path":          "app",
+			"project":       pb,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if invB.IsError {
+		t.Fatalf("inventory b: %+v", invB.Content)
+	}
+	var outB struct {
+		Total     int `json:"total"`
+		Resources []struct {
+			Metadata struct {
+				Name string `json:"name"`
+			} `json:"metadata"`
+		} `json:"resources"`
+	}
+	if err := structuredToMap(invB.StructuredContent, &outB); err != nil {
+		t.Fatal(err)
+	}
+	if outB.Total != 1 || outB.Resources[0].Metadata.Name != "cfg-b" {
+		t.Fatalf("inventory project-b: %+v", outB)
+	}
+
+	baseA := filepath.Join(root, "project-a", ".kustomize-mcp", "checkpoints", ckA)
+	baseB := filepath.Join(root, "project-b", ".kustomize-mcp", "checkpoints", ckB)
+	if st, err := os.Stat(baseA); err != nil || !st.IsDir() {
+		t.Fatalf("checkpoint dir project-a: %v", err)
+	}
+	if st, err := os.Stat(baseB); err != nil || !st.IsDir() {
+		t.Fatalf("checkpoint dir project-b: %v", err)
+	}
+
+	renderOut, err := cs.CallTool(ctx, &mcp.CallToolParams{
+		Name: "render",
+		Arguments: map[string]any{
+			"checkpoint_id": mustToolString(t, cs, ctx, "create_checkpoint", map[string]any{"project": pa}, "checkpoint_id"),
+			"path":          "app",
+			"project":       pa,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if renderOut.IsError {
+		t.Fatalf("second render: %+v", renderOut.Content)
+	}
+	var loc struct {
+		Path string `json:"path"`
+	}
+	if err := structuredToMap(renderOut.StructuredContent, &loc); err != nil {
+		t.Fatal(err)
+	}
+	if !filepath.IsLocal(loc.Path) {
+		t.Fatalf("expected workspace-relative path, got %q", loc.Path)
+	}
+	if filepath.IsAbs(loc.Path) {
+		t.Fatalf("path must not be absolute: %q", loc.Path)
+	}
+	if strings.Contains(loc.Path, "project-a") {
+		t.Fatalf("render path should be relative to project root, should not contain project-a: %q", loc.Path)
 	}
 }
 

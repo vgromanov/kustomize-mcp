@@ -46,4 +46,12 @@ ordered list of transformers that modified it.
 
 All paths are relative to the MCP workspace root: the folder the client reports via
 roots/list (e.g. the Cursor workspace), or KUSTOMIZE_MCP_ROOT if set, or the process
-working directory as a last resort.`
+working directory as a last resort.
+
+When working in a multi-project workspace, pass the optional project parameter on every
+tool call (a directory path relative to that workspace root). This scopes the effective
+root to workspace/project so Kustomize paths stay short (for example path overlays/prod
+instead of project-a/overlays/prod), checkpoints live under project/.kustomize-mcp/checkpoints
+instead of mixing across projects, and dependency scans stay within that project tree.
+Use the same project value for create_checkpoint, render, inventory, trace, diff, clear,
+and dependencies so checkpoints line up.`
