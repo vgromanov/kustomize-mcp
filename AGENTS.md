@@ -139,9 +139,16 @@ fatal.
 2. MCP `roots/list` from the client session (Cursor / VS Code opened folder)
 3. `os.Getwd()` as last resort
 
-Tool handlers may join an optional `project` path onto this root before constructing
-`kustmcp.Server` (multi-project / monorepo workflows): checkpoints and dependency scans
-then use `<workspace>/<project>` as their root.
+When `project` is set on a tool call, `workspace.ResolveProject` searches all
+available roots (env, all MCP `roots/list` entries, or cwd) in two passes:
+1. Subdirectory match — `root/project` exists as a directory (monorepo layout)
+2. Suffix match — a root path ends with `/project` (sibling-repo / multi-root layout)
+
+This means in a multi-folder Cursor workspace with roots `/repos/hci` and
+`/repos/infra/clusters-universal`, setting `project: "infra/clusters-universal"`
+resolves directly to the second root without requiring a common parent.
+
+Checkpoints and dependency scans then use the resolved root.
 
 The `RootSession` interface exists specifically to make this testable without a
 real MCP client.

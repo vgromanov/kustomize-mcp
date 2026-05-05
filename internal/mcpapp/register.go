@@ -35,23 +35,27 @@ type dependenciesOut struct {
 // Register adds tools and prompts to the MCP server.
 func Register(server *mcp.Server, opts Options) {
 	serverFor := func(ctx context.Context, req *mcp.CallToolRequest, project *string) (*kustmcp.Server, error) {
-		root, err := workspace.Dir(ctx, req.Session)
+		p := ""
+		if project != nil {
+			p = strings.TrimSpace(*project)
+		}
+		var root string
+		var err error
+		if p == "" {
+			root, err = workspace.Dir(ctx, req.Session)
+		} else {
+			if filepath.IsAbs(p) {
+				return nil, fmt.Errorf("project must be a relative path")
+			}
+			for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
+				if seg == ".." {
+					return nil, fmt.Errorf("project path must not traverse upward")
+				}
+			}
+			root, err = workspace.ResolveProject(ctx, req.Session, p)
+		}
 		if err != nil {
 			return nil, err
-		}
-		if project != nil {
-			p := strings.TrimSpace(*project)
-			if p != "" {
-				if filepath.IsAbs(p) {
-					return nil, fmt.Errorf("project must be a relative path")
-				}
-				for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
-					if seg == ".." {
-						return nil, fmt.Errorf("project path must not traverse upward")
-					}
-				}
-				root = filepath.Join(root, filepath.FromSlash(p))
-			}
 		}
 		return kustmcp.NewServer(root, opts.LoadRestrictions, opts.Helm)
 	}

@@ -54,4 +54,12 @@ root to workspace/project so Kustomize paths stay short (for example path overla
 instead of project-a/overlays/prod), checkpoints live under project/.kustomize-mcp/checkpoints
 instead of mixing across projects, and dependency scans stay within that project tree.
 Use the same project value for create_checkpoint, render, inventory, trace, diff, clear,
-and dependencies so checkpoints line up.`
+and dependencies so checkpoints line up.
+
+When the client reports multiple workspace folders via roots/list (multi-root workspace),
+the project parameter is resolved across all roots in two passes: first as a subdirectory
+of each root (monorepo layout), then by matching a root whose path ends with the project
+segments (sibling-repo layout). For example, if roots are /repos/hci and
+/repos/infra/clusters-universal, project "infra/clusters-universal" matches the second root
+directly. Use the same project value for create_checkpoint, render, inventory, trace, diff,
+clear, and dependencies so checkpoints line up.`
