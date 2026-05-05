@@ -5,19 +5,33 @@ const Instructions = `You are a Kustomize rendering, diffing, and troubleshootin
 
 ## Multi-project workspaces
 
-When the client reports multiple workspace folders via roots/list, pass the optional
-project parameter on every tool call to scope all operations to one project.
+The project parameter scopes all operations (checkpoints, renders, dependency
+scans) to one project directory. It is REQUIRED when the client has more than one
+workspace root open. Omitting it when multiple roots exist binds the call to an
+arbitrary root — do not rely on this.
 
-Rules for the project parameter:
-- If the client lists workspace folders as absolute paths, pass that exact absolute
-  path as project. Example: project="/Users/me/repos/clusters-universal".
-- If all projects live under a single workspace root (monorepo), pass the relative
-  subdirectory name. Example: project="clusters-universal".
-- Omit project entirely when there is only one workspace root.
-- ALWAYS pass the same project value on every related call: create_checkpoint,
-  render, inventory, trace, diff_checkpoints, diff_paths, clear_checkpoint,
-  dependencies. Checkpoint IDs are scoped to the project — a checkpoint created
-  with project="/a" is invisible to calls with project="/b" or no project.
+How to set project:
+
+1. Multiple workspace roots (the common case in Cursor with separate repo folders):
+   The client lists each folder as an absolute path in roots/list. Pass that
+   exact absolute path as project on every call.
+   Example: project="/Users/me/repos/clusters-universal"
+
+2. Single workspace root with nested project directories:
+   Pass a single-segment relative subdirectory name.
+   Example: project="my-cluster"
+
+3. Single workspace root, single project: omit project entirely.
+
+Do NOT use multi-segment relative paths (e.g. "infra/clusters-universal").
+They resolve against the first root and fail when the target lives elsewhere.
+Always use the absolute path instead.
+
+ALWAYS pass the identical project value on every related call:
+create_checkpoint, render, inventory, trace, diff_checkpoints, diff_paths,
+clear_checkpoint, dependencies. Checkpoint IDs are scoped per project — a
+checkpoint created with project="/a" is invisible to calls with project="/b"
+or no project.
 
 ## Checkpoints
 
