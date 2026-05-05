@@ -48,18 +48,15 @@ All paths are relative to the MCP workspace root: the folder the client reports 
 roots/list (e.g. the Cursor workspace), or KUSTOMIZE_MCP_ROOT if set, or the process
 working directory as a last resort.
 
-When working in a multi-project workspace, pass the optional project parameter on every
-tool call (a directory path relative to that workspace root). This scopes the effective
-root to workspace/project so Kustomize paths stay short (for example path overlays/prod
-instead of project-a/overlays/prod), checkpoints live under project/.kustomize-mcp/checkpoints
-instead of mixing across projects, and dependency scans stay within that project tree.
-Use the same project value for create_checkpoint, render, inventory, trace, diff, clear,
-and dependencies so checkpoints line up.
+Multi-project workspaces: pass the optional project parameter on every related tool
+call so checkpoints and dependency scans stay scoped to one repo or folder.
+Checkpoints live under that project's .kustomize-mcp/checkpoints/. Use the same
+project value on create_checkpoint, render, inventory, trace, diff, clear, and
+dependencies.
 
-When the client reports multiple workspace folders via roots/list (multi-root workspace),
-the project parameter is resolved across all roots in two passes: first as a subdirectory
-of each root (monorepo layout), then by matching a root whose path ends with the project
-segments (sibling-repo layout). For example, if roots are /repos/hci and
-/repos/infra/clusters-universal, project "infra/clusters-universal" matches the second root
-directly. Use the same project value for create_checkpoint, render, inventory, trace, diff,
-clear, and dependencies so checkpoints line up.`
+You may set project to (a) a relative path resolved across all MCP roots — first as a
+subdirectory under each root, then by matching a root whose path ends with those
+segments — or (b) an absolute directory path that equals or lies inside one of the
+workspace roots from roots/list. When the client lists workspace folders as absolute
+paths (typical in Cursor multi-root), prefer passing that exact absolute path as
+project so there is no ambiguity between sibling repos.`

@@ -75,7 +75,7 @@ internal/
 | `inventory` | Lists rendered resources with origin + transformer metadata; supports filter |
 | `trace` | Traces one resource's provenance: origin file + ordered transformer chain |
 
-All tools accept an optional `project` argument (workspace-relative directory). When set, the effective workspace root becomes `<MCP workspace>/<project>`: paths and checkpoints are scoped under that subdirectory (`.kustomize-mcp/` lives in the project folder). Omit `project` for single-repo workspaces or paths expressed from the MCP workspace root.
+All tools accept an optional `project` argument: a relative path resolved across MCP roots, or an absolute directory equal to or under a workspace root from `roots/list` (preferred in multi-root Cursor when folders are listed as absolute paths). When set, the effective workspace root is that directory; paths and checkpoints are scoped there (`.kustomize-mcp/` lives under that root). Omit `project` for single-folder workspaces.
 
 ### Prompts
 
@@ -139,14 +139,15 @@ fatal.
 2. MCP `roots/list` from the client session (Cursor / VS Code opened folder)
 3. `os.Getwd()` as last resort
 
-When `project` is set on a tool call, `workspace.ResolveProject` searches all
-available roots (env, all MCP `roots/list` entries, or cwd) in two passes:
-1. Subdirectory match — `root/project` exists as a directory (monorepo layout)
-2. Suffix match — a root path ends with `/project` (sibling-repo / multi-root layout)
-
-This means in a multi-folder Cursor workspace with roots `/repos/hci` and
-`/repos/infra/clusters-universal`, setting `project: "infra/clusters-universal"`
-resolves directly to the second root without requiring a common parent.
+When `project` is set on a tool call, `workspace.ResolveProject` determines the
+effective root:
+- **Absolute `project`**: must equal or be a subdirectory of a known root (from
+  `AllRoots`); the path must exist and be a directory. Agents in multi-root Cursor
+  workspaces should pass the same absolute path the client shows for a workspace
+  folder.
+- **Relative `project`**: searches all available roots in two passes:
+  1. Subdirectory match — `root/project` exists as a directory (monorepo layout)
+  2. Suffix match — a root path ends with `/project` (sibling-repo layout)
 
 Checkpoints and dependency scans then use the resolved root.
 
@@ -280,7 +281,9 @@ surface warnings.
 - Error messages are lowercase, no trailing punctuation
 - Path arguments throughout the stack are workspace-relative and use forward
   slashes (converted via `filepath.ToSlash`). With the MCP `project` tool
-  argument, "workspace" means `<MCP workspace>/<project>` for that call.
+  argument, the effective workspace root is either that absolute path (when
+  allowed) or the resolved relative project; Kustomize `path` arguments stay
+  relative to that root.
 - Tool output schemas must be JSON objects per MCP SDK rules — wrap primitives
   in structs with `json` and `jsonschema` tags
 - Tests use standard `testing` package, no third-party test framework

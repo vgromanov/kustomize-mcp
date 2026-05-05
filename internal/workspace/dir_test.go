@@ -304,3 +304,79 @@ func TestResolveProject_fallback(t *testing.T) {
 		t.Fatalf("fallback: got %q want %q", got, want)
 	}
 }
+
+func TestResolveProject_absoluteExactRoot(t *testing.T) {
+	t.Setenv("KUSTOMIZE_MCP_ROOT", "")
+	rootB := filepath.Join(t.TempDir(), "infra", "clusters-universal")
+	if err := os.MkdirAll(rootB, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	rootA := t.TempDir()
+
+	sess := &fakeRootSession{
+		roots: []*mcp.Root{
+			{URI: "file://" + filepath.ToSlash(rootA)},
+			{URI: "file://" + filepath.ToSlash(rootB)},
+		},
+	}
+	got, err := ResolveProject(context.Background(), sess, rootB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Clean(got) != filepath.Clean(rootB) {
+		t.Fatalf("got %q want %q", got, rootB)
+	}
+}
+
+func TestResolveProject_absoluteSubdir(t *testing.T) {
+	t.Setenv("KUSTOMIZE_MCP_ROOT", "")
+	root := t.TempDir()
+	sub := filepath.Join(root, "pkg", "app")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	sess := &fakeRootSession{
+		roots: []*mcp.Root{{URI: "file://" + filepath.ToSlash(root)}},
+	}
+	got, err := ResolveProject(context.Background(), sess, sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Clean(got) != filepath.Clean(sub) {
+		t.Fatalf("got %q want %q", got, sub)
+	}
+}
+
+func TestResolveProject_absoluteUnderEnvRoot(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "nested")
+	if err := os.MkdirAll(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUSTOMIZE_MCP_ROOT", root)
+
+	got, err := ResolveProject(context.Background(), nil, sub)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Clean(got) != filepath.Clean(sub) {
+		t.Fatalf("got %q want %q", got, sub)
+	}
+}
+
+func TestResolveProject_absoluteRejectedOutsideRoots(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("KUSTOMIZE_MCP_ROOT", root)
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.MkdirAll(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := ResolveProject(context.Background(), nil, outside)
+	if err == nil {
+		t.Fatal("expected error for project outside workspace roots")
+	}
+}

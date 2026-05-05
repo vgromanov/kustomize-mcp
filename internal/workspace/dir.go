@@ -76,7 +76,10 @@ func AllRoots(ctx context.Context, sess RootSession) ([]string, error) {
 
 // ResolveProject finds the effective workspace root for a project.
 //
-// Resolution order:
+// If project is an absolute path, it must be equal to or a subdirectory of one of
+// the known workspace roots (from AllRoots); the path must exist and be a directory.
+//
+// Otherwise (relative path), resolution order is:
 //  1. project as a subdirectory of each available root (first existing dir wins)
 //  2. a root whose path ends with the project segments (multi-root workspace match)
 //  3. falls back to primaryRoot/project (may not exist; lets the caller surface the error)
@@ -84,6 +87,26 @@ func ResolveProject(ctx context.Context, sess RootSession, project string) (stri
 	roots, err := AllRoots(ctx, sess)
 	if err != nil {
 		return "", err
+	}
+
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return "", fmt.Errorf("project path must be non-empty")
+	}
+
+	if filepath.IsAbs(project) {
+		abs := filepath.Clean(project)
+		if !pathWithinKnownRoots(abs, roots) {
+			return "", fmt.Errorf("project absolute path must be equal to or inside an MCP workspace root")
+		}
+		st, err := os.Stat(abs)
+		if err != nil {
+			return "", err
+		}
+		if !st.IsDir() {
+			return "", fmt.Errorf("project path must be a directory")
+		}
+		return abs, nil
 	}
 
 	p := filepath.FromSlash(project)
@@ -104,6 +127,25 @@ func ResolveProject(ctx context.Context, sess RootSession, project string) (stri
 	}
 
 	return filepath.Join(roots[0], p), nil
+}
+
+// pathWithinKnownRoots reports whether target is equal to root or strictly inside it.
+func pathWithinKnownRoots(target string, roots []string) bool {
+	target = filepath.Clean(target)
+	for _, root := range roots {
+		root = filepath.Clean(root)
+		rel, err := filepath.Rel(root, target)
+		if err != nil {
+			continue
+		}
+		if rel == "." {
+			return true
+		}
+		if !strings.HasPrefix(rel, "..") {
+			return true
+		}
+	}
+	return false
 }
 
 // pickRootFromRoots returns the first usable file:// root path.
