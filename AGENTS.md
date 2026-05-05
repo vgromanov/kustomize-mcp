@@ -75,6 +75,8 @@ internal/
 | `inventory` | Lists rendered resources with origin + transformer metadata; supports filter |
 | `trace` | Traces one resource's provenance: origin file + ordered transformer chain |
 
+All tools accept an optional `project` argument: a relative path resolved across MCP roots, or an absolute directory equal to or under a workspace root from `roots/list` (preferred in multi-root Cursor when folders are listed as absolute paths). When set, the effective workspace root is that directory; paths and checkpoints are scoped there (`.kustomize-mcp/` lives under that root). Omit `project` for single-folder workspaces.
+
 ### Prompts
 
 `explain`, `refactor`, `diff_dirs`, `troubleshoot` — each composes a `Usage`
@@ -136,6 +138,15 @@ fatal.
 1. `KUSTOMIZE_MCP_ROOT` env var (explicit override)
 2. MCP `roots/list` from the client session (Cursor / VS Code opened folder)
 3. `os.Getwd()` as last resort
+
+When `project` is set on a tool call, the effective root is resolved by
+`workspace.ResolveAbsProject` (absolute path: must equal or lie under a root from
+`AllRoots`, validated against MCP roots/list or `KUSTOMIZE_MCP_ROOT`) or
+`workspace.ResolveProject` (relative path: subdirectory match across roots, then suffix
+match on root paths, then fallback). Absolute paths are preferred in multi-root Cursor
+workspaces when folders are listed as full paths.
+
+Checkpoints and dependency scans then use the resolved root.
 
 The `RootSession` interface exists specifically to make this testable without a
 real MCP client.
@@ -266,7 +277,10 @@ surface warnings.
 - JSON field names use `snake_case` to match the upstream Python MCP server
 - Error messages are lowercase, no trailing punctuation
 - Path arguments throughout the stack are workspace-relative and use forward
-  slashes (converted via `filepath.ToSlash`)
+  slashes (converted via `filepath.ToSlash`). With the MCP `project` tool
+  argument, the effective workspace root is either that absolute path (when
+  allowed) or the resolved relative project; Kustomize `path` arguments stay
+  relative to that root.
 - Tool output schemas must be JSON objects per MCP SDK rules — wrap primitives
   in structs with `json` and `jsonschema` tags
 - Tests use standard `testing` package, no third-party test framework

@@ -37,6 +37,128 @@ func Dir(ctx context.Context, sess RootSession) (string, error) {
 	return os.Getwd()
 }
 
+// AllRoots returns all available workspace roots in priority order.
+// When KUSTOMIZE_MCP_ROOT is set, it is the only root returned.
+// Otherwise, all file:// roots from the MCP session are returned.
+// Falls back to os.Getwd() if no other roots are available.
+func AllRoots(ctx context.Context, sess RootSession) ([]string, error) {
+	if v := strings.TrimSpace(os.Getenv("KUSTOMIZE_MCP_ROOT")); v != "" {
+		abs, err := filepath.Abs(v)
+		if err != nil {
+			return nil, err
+		}
+		return []string{abs}, nil
+	}
+	if sess != nil {
+		res, err := sess.ListRoots(ctx, nil)
+		if err == nil && res != nil {
+			var roots []string
+			for _, r := range res.Roots {
+				if r == nil {
+					continue
+				}
+				p, err := fileURIPath(r.URI)
+				if err == nil && p != "" {
+					roots = append(roots, filepath.Clean(p))
+				}
+			}
+			if len(roots) > 0 {
+				return roots, nil
+			}
+		}
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	return []string{cwd}, nil
+}
+
+// ResolveAbsProject returns absPath as the effective workspace root when it equals
+// a known root or is a subdirectory of one (from AllRoots). The path must exist
+// and be a directory. Otherwise returns an error if the path is not under any known root.
+func ResolveAbsProject(ctx context.Context, sess RootSession, absPath string) (string, error) {
+	roots, err := AllRoots(ctx, sess)
+	if err != nil {
+		return "", err
+	}
+
+	abs := filepath.Clean(strings.TrimSpace(absPath))
+	if !filepath.IsAbs(abs) {
+		return "", fmt.Errorf("project path must be absolute")
+	}
+	if !pathWithinKnownRoots(abs, roots) {
+		return "", fmt.Errorf("project path is not a known workspace root or subdirectory")
+	}
+	st, err := os.Stat(abs)
+	if err != nil {
+		return "", err
+	}
+	if !st.IsDir() {
+		return "", fmt.Errorf("project path must be a directory")
+	}
+	return abs, nil
+}
+
+// ResolveProject finds the effective workspace root for a relative project path.
+//
+// Resolution order:
+//  1. project as a subdirectory of each available root (first existing dir wins)
+//  2. a root whose path ends with the project segments (multi-root workspace match)
+//  3. falls back to primaryRoot/project (may not exist; lets the caller surface the error)
+func ResolveProject(ctx context.Context, sess RootSession, project string) (string, error) {
+	roots, err := AllRoots(ctx, sess)
+	if err != nil {
+		return "", err
+	}
+
+	project = strings.TrimSpace(project)
+	if project == "" {
+		return "", fmt.Errorf("project path must be non-empty")
+	}
+	if filepath.IsAbs(project) {
+		return "", fmt.Errorf("project must be a relative path")
+	}
+
+	p := filepath.FromSlash(project)
+
+	for _, root := range roots {
+		candidate := filepath.Join(root, p)
+		if st, err := os.Stat(candidate); err == nil && st.IsDir() {
+			return candidate, nil
+		}
+	}
+
+	projSlash := filepath.ToSlash(project)
+	for _, root := range roots {
+		rootSlash := filepath.ToSlash(root)
+		if strings.HasSuffix(rootSlash, "/"+projSlash) {
+			return root, nil
+		}
+	}
+
+	return filepath.Join(roots[0], p), nil
+}
+
+// pathWithinKnownRoots reports whether target is equal to root or strictly inside it.
+func pathWithinKnownRoots(target string, roots []string) bool {
+	target = filepath.Clean(target)
+	for _, root := range roots {
+		root = filepath.Clean(root)
+		rel, err := filepath.Rel(root, target)
+		if err != nil {
+			continue
+		}
+		if rel == "." {
+			return true
+		}
+		if !strings.HasPrefix(rel, "..") {
+			return true
+		}
+	}
+	return false
+}
+
 // pickRootFromRoots returns the first usable file:// root path.
 func pickRootFromRoots(roots []*mcp.Root) (string, bool) {
 	for _, root := range roots {

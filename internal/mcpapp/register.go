@@ -2,6 +2,9 @@ package mcpapp
 
 import (
 	"context"
+	"fmt"
+	"path/filepath"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -26,13 +29,30 @@ type createCheckpointOut struct {
 }
 
 type dependenciesOut struct {
-	Paths []string `json:"paths" jsonschema:"dependency paths relative to workspace root"`
+	Paths []string `json:"paths" jsonschema:"dependency paths relative to the effective root (MCP workspace, or project subdirectory when project is set)"`
 }
 
 // Register adds tools and prompts to the MCP server.
 func Register(server *mcp.Server, opts Options) {
-	serverFor := func(ctx context.Context, req *mcp.CallToolRequest) (*kustmcp.Server, error) {
-		root, err := workspace.Dir(ctx, req.Session)
+	serverFor := func(ctx context.Context, req *mcp.CallToolRequest, project *string) (*kustmcp.Server, error) {
+		p := ""
+		if project != nil {
+			p = strings.TrimSpace(*project)
+		}
+		var root string
+		var err error
+		if p == "" {
+			root, err = workspace.Dir(ctx, req.Session)
+		} else if filepath.IsAbs(p) {
+			root, err = workspace.ResolveAbsProject(ctx, req.Session, p)
+		} else {
+			for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
+				if seg == ".." {
+					return nil, fmt.Errorf("project path must not traverse upward")
+				}
+			}
+			root, err = workspace.ResolveProject(ctx, req.Session, p)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -42,8 +62,10 @@ func Register(server *mcp.Server, opts Options) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_checkpoint",
 		Description: "Creates an empty checkpoint for storing rendered Kustomize output.",
-	}, func(ctx context.Context, req *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, createCheckpointOut, error) {
-		srv, err := serverFor(ctx, req)
+	}, func(ctx context.Context, req *mcp.CallToolRequest, args struct {
+		Project *string `json:"project,omitempty" jsonschema:"optional in single-root workspaces, REQUIRED when multiple workspace roots are open. Scopes the effective root, checkpoints, and dependency scans to one project. In multi-root workspaces pass the absolute path of the target workspace folder exactly as listed in roots/list. In a single-root workspace with nested projects pass a single-segment relative subdirectory name. Do NOT use multi-segment relative paths. Pass the identical project value on every related call: create_checkpoint, render, inventory, trace, diff_checkpoints, diff_paths, clear_checkpoint, dependencies. Omitting project when multiple roots are open binds the call to an arbitrary root."`
+	}) (*mcp.CallToolResult, createCheckpointOut, error) {
+		srv, err := serverFor(ctx, req, args.Project)
 		if err != nil {
 			return nil, createCheckpointOut{}, err
 		}
@@ -59,8 +81,9 @@ func Register(server *mcp.Server, opts Options) {
 		Description: "Clears all checkpoints, or a single checkpoint when checkpoint_id is set.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args struct {
 		CheckpointID *string `json:"checkpoint_id,omitempty" jsonschema:"checkpoint to remove; omit to clear all"`
+		Project      *string `json:"project,omitempty" jsonschema:"optional in single-root workspaces, REQUIRED when multiple workspace roots are open. Scopes the effective root, checkpoints, and dependency scans to one project. In multi-root workspaces pass the absolute path of the target workspace folder exactly as listed in roots/list. In a single-root workspace with nested projects pass a single-segment relative subdirectory name. Do NOT use multi-segment relative paths. Pass the identical project value on every related call: create_checkpoint, render, inventory, trace, diff_checkpoints, diff_paths, clear_checkpoint, dependencies. Omitting project when multiple roots are open binds the call to an arbitrary root."`
 	}) (*mcp.CallToolResult, map[string]string, error) {
-		srv, err := serverFor(ctx, req)
+		srv, err := serverFor(ctx, req, args.Project)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -88,11 +111,12 @@ func Register(server *mcp.Server, opts Options) {
 		Name:        "render",
 		Description: "Renders the Kustomize directory at path (relative to workspace) into a checkpoint. When recursive is true, also renders Flux Kustomization targets referenced by spec.path (or the kustomize.toolkit.fluxcd.io/kustomization-path annotation when set) and merges inventory across subtrees.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args struct {
-		CheckpointID string `json:"checkpoint_id" jsonschema:"checkpoint directory name"`
-		Path         string `json:"path" jsonschema:"relative path to Kustomize root"`
-		Recursive    bool   `json:"recursive,omitempty" jsonschema:"when true, follow Flux Kustomization CRDs and render nested paths"`
+		CheckpointID string  `json:"checkpoint_id" jsonschema:"checkpoint directory name"`
+		Path         string  `json:"path" jsonschema:"relative path to Kustomize root"`
+		Recursive    bool    `json:"recursive,omitempty" jsonschema:"when true, follow Flux Kustomization CRDs and render nested paths"`
+		Project      *string `json:"project,omitempty" jsonschema:"optional in single-root workspaces, REQUIRED when multiple workspace roots are open. Scopes the effective root, checkpoints, and dependency scans to one project. In multi-root workspaces pass the absolute path of the target workspace folder exactly as listed in roots/list. In a single-root workspace with nested projects pass a single-segment relative subdirectory name. Do NOT use multi-segment relative paths. Pass the identical project value on every related call: create_checkpoint, render, inventory, trace, diff_checkpoints, diff_paths, clear_checkpoint, dependencies. Omitting project when multiple roots are open binds the call to an arbitrary root."`
 	}) (*mcp.CallToolResult, renderResult, error) {
-		srv, err := serverFor(ctx, req)
+		srv, err := serverFor(ctx, req, args.Project)
 		if err != nil {
 			return nil, renderResult{}, err
 		}
@@ -120,10 +144,11 @@ func Register(server *mcp.Server, opts Options) {
 		Name:        "diff_checkpoints",
 		Description: "Compares all rendered manifests between two checkpoints.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args struct {
-		CheckpointID1 string `json:"checkpoint_id_1"`
-		CheckpointID2 string `json:"checkpoint_id_2"`
+		CheckpointID1 string  `json:"checkpoint_id_1"`
+		CheckpointID2 string  `json:"checkpoint_id_2"`
+		Project       *string `json:"project,omitempty" jsonschema:"optional in single-root workspaces, REQUIRED when multiple workspace roots are open. Scopes the effective root, checkpoints, and dependency scans to one project. In multi-root workspaces pass the absolute path of the target workspace folder exactly as listed in roots/list. In a single-root workspace with nested projects pass a single-segment relative subdirectory name. Do NOT use multi-segment relative paths. Pass the identical project value on every related call: create_checkpoint, render, inventory, trace, diff_checkpoints, diff_paths, clear_checkpoint, dependencies. Omitting project when multiple roots are open binds the call to an arbitrary root."`
 	}) (*mcp.CallToolResult, *diff.Result, error) {
-		srv, err := serverFor(ctx, req)
+		srv, err := serverFor(ctx, req, args.Project)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -138,11 +163,12 @@ func Register(server *mcp.Server, opts Options) {
 		Name:        "diff_paths",
 		Description: "Compares two Kustomize roots rendered under the same checkpoint.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args struct {
-		CheckpointID string `json:"checkpoint_id"`
-		Path1        string `json:"path_1" jsonschema:"first rendered relative path"`
-		Path2        string `json:"path_2" jsonschema:"second rendered relative path"`
+		CheckpointID string  `json:"checkpoint_id"`
+		Path1        string  `json:"path_1" jsonschema:"first rendered relative path"`
+		Path2        string  `json:"path_2" jsonschema:"second rendered relative path"`
+		Project      *string `json:"project,omitempty" jsonschema:"optional in single-root workspaces, REQUIRED when multiple workspace roots are open. Scopes the effective root, checkpoints, and dependency scans to one project. In multi-root workspaces pass the absolute path of the target workspace folder exactly as listed in roots/list. In a single-root workspace with nested projects pass a single-segment relative subdirectory name. Do NOT use multi-segment relative paths. Pass the identical project value on every related call: create_checkpoint, render, inventory, trace, diff_checkpoints, diff_paths, clear_checkpoint, dependencies. Omitting project when multiple roots are open binds the call to an arbitrary root."`
 	}) (*mcp.CallToolResult, *diff.Result, error) {
-		srv, err := serverFor(ctx, req)
+		srv, err := serverFor(ctx, req, args.Project)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -157,11 +183,12 @@ func Register(server *mcp.Server, opts Options) {
 		Name:        "dependencies",
 		Description: "Lists file and Kustomization dependencies for a Kustomization file path.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, args struct {
-		Path      string `json:"path" jsonschema:"relative path to kustomization.yaml (or file for reverse mode)"`
-		Recursive bool   `json:"recursive,omitempty"`
-		Reverse   bool   `json:"reverse,omitempty"`
+		Path      string  `json:"path" jsonschema:"relative path to kustomization.yaml (or file for reverse mode)"`
+		Recursive bool    `json:"recursive,omitempty"`
+		Reverse   bool    `json:"reverse,omitempty"`
+		Project   *string `json:"project,omitempty" jsonschema:"optional in single-root workspaces, REQUIRED when multiple workspace roots are open. Scopes the effective root, checkpoints, and dependency scans to one project. In multi-root workspaces pass the absolute path of the target workspace folder exactly as listed in roots/list. In a single-root workspace with nested projects pass a single-segment relative subdirectory name. Do NOT use multi-segment relative paths. Pass the identical project value on every related call: create_checkpoint, render, inventory, trace, diff_checkpoints, diff_paths, clear_checkpoint, dependencies. Omitting project when multiple roots are open binds the call to an arbitrary root."`
 	}) (*mcp.CallToolResult, dependenciesOut, error) {
-		srv, err := serverFor(ctx, req)
+		srv, err := serverFor(ctx, req, args.Project)
 		if err != nil {
 			return nil, dependenciesOut{}, err
 		}
@@ -181,8 +208,9 @@ func Register(server *mcp.Server, opts Options) {
 		Kind         string  `json:"kind" jsonschema:"Kubernetes resource kind"`
 		Name         string  `json:"name" jsonschema:"Kubernetes resource name"`
 		Namespace    *string `json:"namespace,omitempty" jsonschema:"Kubernetes resource namespace"`
+		Project      *string `json:"project,omitempty" jsonschema:"optional in single-root workspaces, REQUIRED when multiple workspace roots are open. Scopes the effective root, checkpoints, and dependency scans to one project. In multi-root workspaces pass the absolute path of the target workspace folder exactly as listed in roots/list. In a single-root workspace with nested projects pass a single-segment relative subdirectory name. Do NOT use multi-segment relative paths. Pass the identical project value on every related call: create_checkpoint, render, inventory, trace, diff_checkpoints, diff_paths, clear_checkpoint, dependencies. Omitting project when multiple roots are open binds the call to an arbitrary root."`
 	}) (*mcp.CallToolResult, *trace.TraceResult, error) {
-		srv, err := serverFor(ctx, req)
+		srv, err := serverFor(ctx, req, args.Project)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -200,8 +228,9 @@ func Register(server *mcp.Server, opts Options) {
 		CheckpointID string                 `json:"checkpoint_id"`
 		Path         *string                `json:"path,omitempty" jsonschema:"narrow to a single rendered kustomize root"`
 		Filter       *filter.ResourceFilter `json:"filter,omitempty" jsonschema:"filter resources by kind, api_version, namespace, or name"`
+		Project      *string                `json:"project,omitempty" jsonschema:"optional in single-root workspaces, REQUIRED when multiple workspace roots are open. Scopes the effective root, checkpoints, and dependency scans to one project. In multi-root workspaces pass the absolute path of the target workspace folder exactly as listed in roots/list. In a single-root workspace with nested projects pass a single-segment relative subdirectory name. Do NOT use multi-segment relative paths. Pass the identical project value on every related call: create_checkpoint, render, inventory, trace, diff_checkpoints, diff_paths, clear_checkpoint, dependencies. Omitting project when multiple roots are open binds the call to an arbitrary root."`
 	}) (*mcp.CallToolResult, *manifest.ResourceTree, error) {
-		srv, err := serverFor(ctx, req)
+		srv, err := serverFor(ctx, req, args.Project)
 		if err != nil {
 			return nil, nil, err
 		}
