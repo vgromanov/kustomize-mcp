@@ -305,7 +305,7 @@ func TestResolveProject_fallback(t *testing.T) {
 	}
 }
 
-func TestResolveProject_absoluteExactRoot(t *testing.T) {
+func TestResolveAbsProject_matchesRoot(t *testing.T) {
 	t.Setenv("KUSTOMIZE_MCP_ROOT", "")
 	rootB := filepath.Join(t.TempDir(), "infra", "clusters-universal")
 	if err := os.MkdirAll(rootB, 0o700); err != nil {
@@ -319,7 +319,7 @@ func TestResolveProject_absoluteExactRoot(t *testing.T) {
 			{URI: "file://" + filepath.ToSlash(rootB)},
 		},
 	}
-	got, err := ResolveProject(context.Background(), sess, rootB)
+	got, err := ResolveAbsProject(context.Background(), sess, rootB)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,43 +328,44 @@ func TestResolveProject_absoluteExactRoot(t *testing.T) {
 	}
 }
 
-func TestResolveProject_absoluteSubdir(t *testing.T) {
-	t.Setenv("KUSTOMIZE_MCP_ROOT", "")
-	root := t.TempDir()
-	sub := filepath.Join(root, "pkg", "app")
-	if err := os.MkdirAll(sub, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	sess := &fakeRootSession{
-		roots: []*mcp.Root{{URI: "file://" + filepath.ToSlash(root)}},
-	}
-	got, err := ResolveProject(context.Background(), sess, sub)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Clean(got) != filepath.Clean(sub) {
-		t.Fatalf("got %q want %q", got, sub)
-	}
+func TestResolveAbsProject_subdirOfRoot(t *testing.T) {
+	t.Run("session_roots", func(t *testing.T) {
+		t.Setenv("KUSTOMIZE_MCP_ROOT", "")
+		root := t.TempDir()
+		sub := filepath.Join(root, "pkg", "app")
+		if err := os.MkdirAll(sub, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		sess := &fakeRootSession{
+			roots: []*mcp.Root{{URI: "file://" + filepath.ToSlash(root)}},
+		}
+		got, err := ResolveAbsProject(context.Background(), sess, sub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if filepath.Clean(got) != filepath.Clean(sub) {
+			t.Fatalf("got %q want %q", got, sub)
+		}
+	})
+	t.Run("env_root", func(t *testing.T) {
+		root := t.TempDir()
+		sub := filepath.Join(root, "nested")
+		if err := os.MkdirAll(sub, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("KUSTOMIZE_MCP_ROOT", root)
+
+		got, err := ResolveAbsProject(context.Background(), nil, sub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if filepath.Clean(got) != filepath.Clean(sub) {
+			t.Fatalf("got %q want %q", got, sub)
+		}
+	})
 }
 
-func TestResolveProject_absoluteUnderEnvRoot(t *testing.T) {
-	root := t.TempDir()
-	sub := filepath.Join(root, "nested")
-	if err := os.MkdirAll(sub, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("KUSTOMIZE_MCP_ROOT", root)
-
-	got, err := ResolveProject(context.Background(), nil, sub)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if filepath.Clean(got) != filepath.Clean(sub) {
-		t.Fatalf("got %q want %q", got, sub)
-	}
-}
-
-func TestResolveProject_absoluteRejectedOutsideRoots(t *testing.T) {
+func TestResolveAbsProject_rejected(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(root, 0o700); err != nil {
 		t.Fatal(err)
@@ -375,8 +376,8 @@ func TestResolveProject_absoluteRejectedOutsideRoots(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := ResolveProject(context.Background(), nil, outside)
+	_, err := ResolveAbsProject(context.Background(), nil, outside)
 	if err == nil {
-		t.Fatal("expected error for project outside workspace roots")
+		t.Fatal("expected error for path outside workspace roots")
 	}
 }

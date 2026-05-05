@@ -139,15 +139,12 @@ fatal.
 2. MCP `roots/list` from the client session (Cursor / VS Code opened folder)
 3. `os.Getwd()` as last resort
 
-When `project` is set on a tool call, `workspace.ResolveProject` determines the
-effective root:
-- **Absolute `project`**: must equal or be a subdirectory of a known root (from
-  `AllRoots`); the path must exist and be a directory. Agents in multi-root Cursor
-  workspaces should pass the same absolute path the client shows for a workspace
-  folder.
-- **Relative `project`**: searches all available roots in two passes:
-  1. Subdirectory match — `root/project` exists as a directory (monorepo layout)
-  2. Suffix match — a root path ends with `/project` (sibling-repo layout)
+When `project` is set on a tool call, the effective root is resolved by
+`workspace.ResolveAbsProject` (absolute path: must equal or lie under a root from
+`AllRoots`, validated against MCP roots/list or `KUSTOMIZE_MCP_ROOT`) or
+`workspace.ResolveProject` (relative path: subdirectory match across roots, then suffix
+match on root paths, then fallback). Absolute paths are preferred in multi-root Cursor
+workspaces when folders are listed as full paths.
 
 Checkpoints and dependency scans then use the resolved root.
 

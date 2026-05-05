@@ -74,12 +74,35 @@ func AllRoots(ctx context.Context, sess RootSession) ([]string, error) {
 	return []string{cwd}, nil
 }
 
-// ResolveProject finds the effective workspace root for a project.
+// ResolveAbsProject returns absPath as the effective workspace root when it equals
+// a known root or is a subdirectory of one (from AllRoots). The path must exist
+// and be a directory. Otherwise returns an error if the path is not under any known root.
+func ResolveAbsProject(ctx context.Context, sess RootSession, absPath string) (string, error) {
+	roots, err := AllRoots(ctx, sess)
+	if err != nil {
+		return "", err
+	}
+
+	abs := filepath.Clean(strings.TrimSpace(absPath))
+	if !filepath.IsAbs(abs) {
+		return "", fmt.Errorf("project path must be absolute")
+	}
+	if !pathWithinKnownRoots(abs, roots) {
+		return "", fmt.Errorf("project path is not a known workspace root or subdirectory")
+	}
+	st, err := os.Stat(abs)
+	if err != nil {
+		return "", err
+	}
+	if !st.IsDir() {
+		return "", fmt.Errorf("project path must be a directory")
+	}
+	return abs, nil
+}
+
+// ResolveProject finds the effective workspace root for a relative project path.
 //
-// If project is an absolute path, it must be equal to or a subdirectory of one of
-// the known workspace roots (from AllRoots); the path must exist and be a directory.
-//
-// Otherwise (relative path), resolution order is:
+// Resolution order:
 //  1. project as a subdirectory of each available root (first existing dir wins)
 //  2. a root whose path ends with the project segments (multi-root workspace match)
 //  3. falls back to primaryRoot/project (may not exist; lets the caller surface the error)
@@ -93,20 +116,8 @@ func ResolveProject(ctx context.Context, sess RootSession, project string) (stri
 	if project == "" {
 		return "", fmt.Errorf("project path must be non-empty")
 	}
-
 	if filepath.IsAbs(project) {
-		abs := filepath.Clean(project)
-		if !pathWithinKnownRoots(abs, roots) {
-			return "", fmt.Errorf("project absolute path must be equal to or inside an MCP workspace root")
-		}
-		st, err := os.Stat(abs)
-		if err != nil {
-			return "", err
-		}
-		if !st.IsDir() {
-			return "", fmt.Errorf("project path must be a directory")
-		}
-		return abs, nil
+		return "", fmt.Errorf("project must be a relative path")
 	}
 
 	p := filepath.FromSlash(project)

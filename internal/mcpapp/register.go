@@ -43,12 +43,12 @@ func Register(server *mcp.Server, opts Options) {
 		var err error
 		if p == "" {
 			root, err = workspace.Dir(ctx, req.Session)
+		} else if filepath.IsAbs(p) {
+			root, err = workspace.ResolveAbsProject(ctx, req.Session, p)
 		} else {
-			if !filepath.IsAbs(p) {
-				for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
-					if seg == ".." {
-						return nil, fmt.Errorf("project path must not traverse upward")
-					}
+			for _, seg := range strings.Split(filepath.ToSlash(p), "/") {
+				if seg == ".." {
+					return nil, fmt.Errorf("project path must not traverse upward")
 				}
 			}
 			root, err = workspace.ResolveProject(ctx, req.Session, p)

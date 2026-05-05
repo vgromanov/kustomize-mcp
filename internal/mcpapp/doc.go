@@ -48,15 +48,10 @@ All paths are relative to the MCP workspace root: the folder the client reports 
 roots/list (e.g. the Cursor workspace), or KUSTOMIZE_MCP_ROOT if set, or the process
 working directory as a last resort.
 
-Multi-project workspaces: pass the optional project parameter on every related tool
-call so checkpoints and dependency scans stay scoped to one repo or folder.
-Checkpoints live under that project's .kustomize-mcp/checkpoints/. Use the same
-project value on create_checkpoint, render, inventory, trace, diff, clear, and
-dependencies.
-
-You may set project to (a) a relative path resolved across all MCP roots — first as a
-subdirectory under each root, then by matching a root whose path ends with those
-segments — or (b) an absolute directory path that equals or lies inside one of the
-workspace roots from roots/list. When the client lists workspace folders as absolute
-paths (typical in Cursor multi-root), prefer passing that exact absolute path as
-project so there is no ambiguity between sibling repos.`
+Multi-project workspaces: when working in a multi-project workspace, pass the optional project parameter
+on every tool call. In multi-root workspaces, use the absolute path of the
+workspace folder as reported by roots/list (e.g. /Users/me/repos/clusters-universal).
+For monorepo layouts, a relative subdirectory name also works. This scopes checkpoints,
+rendered paths, and dependency scans to that project. Use the same project value
+on all related calls (create_checkpoint, render, inventory, trace, diff, clear,
+dependencies) so checkpoint IDs line up.`
